@@ -105,6 +105,30 @@ contract Raffle is VRFConsumerBaseV2 {
         emit EnteredRaffle(msg.sender);
     }
 
+    // When is the winner suppoed to be picked?
+    /**
+     * 
+     * @dev This is the function that the Chainlink automation nodes call to 
+     * see if it's time to perform and upkeep
+     * The following should be true for this to return true:
+     * 1. The time interval has passed between raffle runs
+     * 2. The raffle is in the OPEN state
+     * 3. The contract has ETH (aka, players)
+     * 4. (Implicit) The subscription is funded with LINK 
+
+     */
+
+    function checkUpkeep(
+        bytes memory /* checkData*/
+    ) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
+        bool timeHasPassed = (block.timestamp - s_lastTimeStamp) >= i_interval;
+        bool isOpen = RaffleState.OPEN == s_raffleState;
+        bool hasBalance = address(this).balance > 0;
+        bool hasPlayers = s_players.length > 0;
+        upkeepNeeded = (timeHasPassed && isOpen && hasBalance && hasPlayers);
+        return (upkeepNeeded, "0x0");
+    }
+
     // 1. Get a random number
     // 2. Use the random number to pick a player
     // 3. Be automatically called
@@ -137,6 +161,9 @@ contract Raffle is VRFConsumerBaseV2 {
         // s_players =  10
         // rng = 12
         // 12 % 10 = 2
+
+        //Do your checks first
+        // Effects (Our own contracts)
         uint256 indexOfWinner = randomWords[0] % s_players.length;
         address payable winner = s_players[indexOfWinner];
         s_recentWinner = winner; //store the winner
@@ -146,6 +173,7 @@ contract Raffle is VRFConsumerBaseV2 {
         s_players = new address payable[](0); //reset the players array to 0
         s_lastTimeStamp = block.timestamp; //restart the clock over
 
+        // Interactions (Other contracts)
         (bool success, ) = winner.call{value: address(this).balance}("");
         if (!success) {
             revert Raffle__TransferFailed(); //revert if the transfer fails
