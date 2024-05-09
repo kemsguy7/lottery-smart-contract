@@ -34,10 +34,17 @@ import {VRFConsumerBaseV2} from "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2
  * @dev Implemnts Chainlink VRFv2
  */
 
-contract Raffle is VRFConsumerBaseV2 {
+contract Raffle is
+    VRFConsumerBaseV2 //raffle contract used chainlink vrf to pic a random number
+{
     error Raffle__NotEnoughEthSent();
     error Raffle__TransferFailed();
     error Raffle__RaffleNotOpen();
+    error Raffle__UpkeepNotNeeded(
+        uint256 currentBalance,
+        uint256 numPlayers,
+        uint256 raffleState
+    );
 
     /* Type declarations */
     enum RaffleState {
@@ -122,7 +129,7 @@ contract Raffle is VRFConsumerBaseV2 {
         bytes memory /* checkData*/
     ) public view returns (bool upkeepNeeded, bytes memory /* performData */) {
         bool timeHasPassed = (block.timestamp - s_lastTimeStamp) >= i_interval;
-        bool isOpen = RaffleState.OPEN == s_raffleState;
+        bool isOpen = RaffleState.OPEN == s_raffleState; //check if the raffle state is open
         bool hasBalance = address(this).balance > 0;
         bool hasPlayers = s_players.length > 0;
         upkeepNeeded = (timeHasPassed && isOpen && hasBalance && hasPlayers);
@@ -133,18 +140,22 @@ contract Raffle is VRFConsumerBaseV2 {
     // 2. Use the random number to pick a player
     // 3. Be automatically called
     // 4. When we're picking a winner , users are not allowed to enter a raffle
-    function pickWinner() external {
+    function performUpkeep(bytes calldata /* performData */) external {
         //the system is to pick a winner automatically after a lot of time has passed
         // check to see if enough time has passed
 
-        if ((block.timestamp - s_lastTimeStamp) < i_interval) {
-            // check if enough time has passed
-            revert();
-        }
-        // 1. Reques the RNG
+        // 1. Request the RNG
         // 2. Get the random number
+        (bool upkeepNeeeded, ) = checkUpkeep("");
+        if (!upkeepNeeeded) {
+            revert Raffle__UpkeepNotNeeded(
+                address(this).balance,
+                s_players.length,
+                uint256(s_raffleState)
+            );
+        }
         s_raffleState = RaffleState.CALCULATING; // We are now calculating the winner so people cannot place their bets
-        uint256 requestId = i_vrfCoordinator.requestRandomWords(
+        i_vrfCoordinator.requestRandomWords(
             i_gasLane,
             i_subscriptionId,
             REQUEST_CONFIRMATIONS,
@@ -155,7 +166,7 @@ contract Raffle is VRFConsumerBaseV2 {
 
     // CEI: Check-Effects-Interactions
     function fulfillRandomWords(
-        uint256 requestId,
+        uint256 /*requestId */,
         uint256[] memory randomWords
     ) internal override {
         // s_players =  10
